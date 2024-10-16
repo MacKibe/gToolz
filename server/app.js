@@ -1,22 +1,20 @@
-// import expreess
-const express = require('express');
+// Import Express
+const express = require("express");
+// Import CORS
+const cors = require("cors");
 // Import the Google APIs client library
 const { google } = require("googleapis");
+// Create an instance of Express
+const app = express();
+// Enable CORS for all routes
+app.use(cors());
 
-// To access the Google Drive API, we need to authenticate using OAuth2
-// We need the refresh token, client ID, client secret, and redirect URL
-
-// The refresh token, is used to obtain new access tokens when the current one expires
-// Get it from the google playground
+// Your OAuth2 credentials
 const REFRESH_TOKEN =
-  "1//04k7B68r323j4CgYIARAAGAQSNwF-L9IrGUjxeooEFt5HxwBnlyZXlzx3EnFFvUaQRJYcehCbHpIVkYKUsiR10RUd4RrRsHPktkc";
-
-// Get the Client ID and client secret from Google Cloud Console.
+  "1//04qH8m1xBKQQNCgYIARAAGAQSNwF-L9IrM17Gq9ZBzfjKj0C84ltBQuKqlPyPebFZR3sglAy9DvqagI4_Rlhy_PdMYVKYtemay80";
 const CLIENT_ID =
   "29587586519-r0pg7nbaeish65duob4d8dl0ngeetq7e.apps.googleusercontent.com";
 const CLIENT_SECRET = "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";
-
-// Redirect URL for OAuth2 authentication, used during the token generation process
 const REDIRECT_URL = "https://developers.google.com/oauthplayground";
 
 // Create an OAuth2 client using the credentials
@@ -35,49 +33,76 @@ const drive = google.drive({
   auth: oauthClient, // OAuth2 client for authorization
 });
 
-// Function to generate a public link for a file or folder on Google Drive
-async function generatePublicLink() {
-  // List the folders in the root directory of Google Drive
-  await drive.files.list({
-    q: "mimeType='application/vnd.google-apps.folder'", // Filter folders only
-    fields: 'files', // Fields we are interested in (we want the folder ID and name)
-    pageSize: 3 // Get 3 results
-  }, (error, response) => {
-    // Show any error that may occur during the request
-    if (error) {
-      console.error('An error occurred', error);
-    }
-    const data = response.data; // Response data
-    console.log(data);// Testing purposes and seeing how our data looks like.
-    
-    // Get the folder data from the response
-    const folders = response.data.files;
-    
-    if (folders.length) {
-      console.log("List of folders:");
-      // Log each folder's name and ID
-      folders.forEach((folder) => {
-        console.log(`${folder.name} ${folder.id}`);
+// Endpoint to handle the API request from the client
+app.get("/folders", async (req, res) => {
+  //
+  // List files in folder
+  const listFilesInFolder = async (folderId) => {
+    const filesResponse = await drive.files.list({
+      q: `'${folderId}' in parents`,
+      fields: "files(id, name, mimeType, size)",
+    });
+    return filesResponse.data.files;
+  };
+  //
+  // Lists folders in the folder
+  const listSubfolders = async (folderId) => {
+    const subfolderResponse = await drive.files.list({
+      q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
+      fields: "files(id, name)", // Get the subfolder ID and name
+    });
+    return subfolderResponse.data.files;
+  };
+
+  try {
+    //
+    // Find the Waweru Documents folder by name
+    const folderResponse = await drive.files.list({
+      q: "'root' in parents and mimeType='application/vnd.google-apps.folder' and name='Waweru Documents'", // Get folder in drive root named Waweru Documents.
+      fields: "files(id, name)",
+    });
+    const folders = folderResponse.data.files;
+
+    if (folders.length > 0) {
+      const waweruFolderId = folders[0].id; // Get the Waweru folder ID
+
+      // Get all subfolders inside Waweru documents
+      const subfolders = await listSubfolders(waweruFolderId);
+
+      // Store the      result to send the client
+      const folderData = [];
+
+      for (const subfolder of subfolders) {
+        // Get files inside each subfolder
+        const filesInSubfolder = await listFilesInFolder(subfolder.id);
+
+        folderData.push({
+          subfolder: {
+            id: subfolder.id,
+            name: subfolder.name,
+          },
+          files:
+            filesInSubfolder.length > 0 ? filesInSubfolder : "No files found",
+        });
+      }
+
+      res.json({
+        folder: {
+          id: waweruFolderId,
+          name: "Waweru Documents",
+        },
+        subfolders: folderData.length > 0 ? folderData : "No subfolders found",
       });
     } else {
-      // If no folders are found, display this message
-      console.log('No folders found!');
+      res.json({ message: "'Waweru Documents' folder not found!" });
     }
-  });
-}
-generatePublicLink();
+  } catch (error) {
+    res.status(500).json({ error: "An error occurred", details: error });
+  }
+});
 
-// Code for future functionalities (commented out for now):
-// You can use this to generate file IDs
-// const link = await drive.files.generateIds();
-
-// Set file permissions to allow sharing (set access to 'reader' and make it public)
-// await drive.permissions.create(
-//   fileId: fileid, // Replace with actual file ID
-//   requestBody: {
-//     role: 'reader', // Set the permission as a reader
-//     type: 'anyone' // Allow anyone to view the file
-//   }
-// );
-
-// Get the shareable link of the file after permission is granted
+// Start the Express server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`);
+});
