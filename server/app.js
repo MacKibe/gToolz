@@ -1,11 +1,11 @@
-// Import Express
+// Import necessary libraries
 const express = require("express");
-// Import CORS
 const cors = require("cors");
-// Import the Google APIs client library
 const { google } = require("googleapis");
+
 // Create an instance of Express
 const app = express();
+
 // Enable CORS for all routes
 app.use(cors());
 
@@ -29,8 +29,8 @@ oauthClient.setCredentials({ refresh_token: REFRESH_TOKEN });
 
 // Initialize the Google Drive API client
 const drive = google.drive({
-  version: "v3", // Specify Drive API version
-  auth: oauthClient, // OAuth2 client for authorization
+  version: "v3",
+  auth: oauthClient,
 });
 
 // Function to get the folder ID of "Waweru Documents"
@@ -42,63 +42,57 @@ const getFolderId = async (folderName) => {
 
   const folders = res.data.files;
   if (folders.length) {
-    const folder = folders[0]; // Assuming there's only one "Waweru Documents" folder
-    return folder.id;
+    return folders[0].id; // Return the first matching folder's ID
   } else {
     throw new Error(`Folder named '${folderName}' not found in root.`);
   }
 };
 
-// Function to list folders inside the "Waweru Documents" folder
-const listSubFolders = async (folderId) => {
+// Function to list image files inside the specified folder and its subfolders
+const listImageFilesInFolder = async (folderId) => {
   const res = await drive.files.list({
-    q: `mimeType='application/vnd.google-apps.folder' and '${folderId}' in parents`,
-    fields: "files(id, name)",
-  });
-
-  const subfolders = res.data.files;
-  if (subfolders.length) {
-    console.log(`Folders in 'Waweru Documents':`);
-    for (const folder of subfolders) {
-      console.log(`${folder.name} (${folder.id})`);
-      await listFilesInSubfolder(folder.id); // List files within the subfolder
-    }
-  } else {
-    console.log("No subfolders found.");
-  }
-};
-
-// Function to list files inside a specific subfolder
-const listFilesInSubfolder = async (folderId) => {
-  const res = await drive.files.list({
-    q: `'${folderId}' in parents`,
-    fields: "files(id, name )",
+    q: `'${folderId}' in parents and mimeType contains 'image/' or '${folderId}' in parents and mimeType = 'application/vnd.google-apps.folder'`, // Fetch images and subfolders
+    fields: "files(id, name, mimeType, parents)",
   });
 
   const files = res.data.files;
-  if (files.length) {
-    console.log(`Files in folder ID: ${folderId}`);
-    files.forEach((file) => {
-      console.log(`${file.name} (${file.id})`);
-    });
-  } else {
-    console.log(`No files found in folder ID: ${folderId}`);
+
+  // Recursively search for images in subfolders
+  const images = [];
+  for (const file of files) {
+    if (file.mimeType === 'application/vnd.google-apps.folder') {
+      // Search for images in subfolder
+      const subfolderImages = await listImageFilesInFolder(file.id);
+      images.push(...subfolderImages);
+    } else if (file.mimeType.startsWith('image/')) {
+      // Collect image file
+      images.push(file);
+    }
+  }
+
+  return images;
+};
+
+// Create an async function to handle the logic
+const main = async () => {
+  try {
+    // Get the folder ID of "Waweru Documents"
+    const folderId = await getFolderId("Waweru Documents");
+    console.log("1. Waweru's folder Id is:", folderId);
+
+    // List image files in the specified folder and its subfolders
+    const images = await listImageFilesInFolder(folderId);
+    console.log("2. Images data:", images);
+  } catch (error) {
+    console.error("Error:", error);
   }
 };
 
-// Call the function to list folders and files inside "Waweru Documents"
-const listFoldersAndFilesInWaweruDocuments = async () => {
-  try {
-    const folderId = await getFolderId("Waweru Documents");
-    await listSubFolders(folderId);
-  } catch (error) {
-    console.error(error.message);
-  }
-};
+// Call the main function
+main();
 
 // Define the PORT and start the Express server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, async () => {
+app.listen(PORT, () => {
   console.log(`Server is running on port ${PORT}`);
-  await listFoldersAndFilesInWaweruDocuments();
 });

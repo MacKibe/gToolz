@@ -1,25 +1,49 @@
-import { useState, useEffect } from "react";
+import { useQuery } from "@tanstack/react-query";
+
+const fetchImages = async () => {
+  const response = await fetch("/images");
+  if (!response.ok) {
+    throw new Error("Failed to fetch images");
+  }
+  return response.json();
+};
+
 const App = () => {
+  const { isLoading, isError, data, error } = useQuery({
+    queryKey: ['images'],
+    queryFn: fetchImages,
+  })
+  console.log(data);
+  
   //
-  // Stores the state.
-  const [images, setImages] = useState([]);
+  // Display loading before data is fetched
+  if (isLoading) {
+    return <div>Loading images...</div>;
+  }
   //
-  // Get data.
-  useEffect(() => {
-    fetch("http://localhost:5000/images") // Your Node.js server endpoint
-      .then((response) => response.json())
-      .then((data) => {
-        setImages(data);
-      })
-      .catch((error) => console.log("Error fetching images:", error));
-  }, []);
+  // Display error when an error occurs
+  if (isError) {
+    return <div>{error.message}</div>;
+  }
+
   return (
     <div>
-      {/* <img src={imageUrl} alt="" />
-      <a href={imageUrl}  target="_blank" rel="noopener noreferrer">Link</a>
-      <iframe src={imageUrl} height="550" width="500"/> */}
-      <h1>Waweru!</h1>
+      {data.length > 0 ? (
+        data.map((image) => (
+          <div key={image.id}>
+            <img
+              src={image.webContentLink}
+              alt={image.name}
+              style={{ width: "200px", height: "200px" }}
+            />
+            <p>{image.name}</p>
+          </div>
+        ))
+      ) : (
+        <div>No images found.</div>
+      )}
     </div>
   );
 };
+
 export default App;
