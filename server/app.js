@@ -33,76 +33,72 @@ const drive = google.drive({
   auth: oauthClient, // OAuth2 client for authorization
 });
 
-// Endpoint to handle the API request from the client
-app.get("/folders", async (req, res) => {
-  //
-  // List files in folder
-  const listFilesInFolder = async (folderId) => {
-    const filesResponse = await drive.files.list({
-      q: `'${folderId}' in parents`,
-      fields: "files(id, name, mimeType, size)",
-    });
-    return filesResponse.data.files;
-  };
-  //
-  // Lists folders in the folder
-  const listSubfolders = async (folderId) => {
-    const subfolderResponse = await drive.files.list({
-      q: `'${folderId}' in parents and mimeType='application/vnd.google-apps.folder'`,
-      fields: "files(id, name)", // Get the subfolder ID and name
-    });
-    return subfolderResponse.data.files;
-  };
+// Function to get the folder ID of "Waweru Documents"
+const getFolderId = async (folderName) => {
+  const res = await drive.files.list({
+    q: `mimeType='application/vnd.google-apps.folder' and name='${folderName}' and 'root' in parents`,
+    fields: "files(id, name)",
+  });
 
-  try {
-    //
-    // Find the Waweru Documents folder by name
-    const folderResponse = await drive.files.list({
-      q: "'root' in parents and mimeType='application/vnd.google-apps.folder' and name='Waweru Documents'", // Get folder in drive root named Waweru Documents.
-      fields: "files(id, name)",
-    });
-    const folders = folderResponse.data.files;
-
-    if (folders.length > 0) {
-      const waweruFolderId = folders[0].id; // Get the Waweru folder ID
-
-      // Get all subfolders inside Waweru documents
-      const subfolders = await listSubfolders(waweruFolderId);
-
-      // Store the      result to send the client
-      const folderData = [];
-
-      for (const subfolder of subfolders) {
-        // Get files inside each subfolder
-        const filesInSubfolder = await listFilesInFolder(subfolder.id);
-
-        folderData.push({
-          subfolder: {
-            id: subfolder.id,
-            name: subfolder.name,
-          },
-          files:
-            filesInSubfolder.length > 0 ? filesInSubfolder : "No files found",
-        });
-      }
-
-      res.json({
-        folder: {
-          id: waweruFolderId,
-          name: "Waweru Documents",
-        },
-        subfolders: folderData.length > 0 ? folderData : "No subfolders found",
-      });
-    } else {
-      res.json({ message: "'Waweru Documents' folder not found!" });
-    }
-  } catch (error) {
-    res.status(500).json({ error: "An error occurred", details: error });
+  const folders = res.data.files;
+  if (folders.length) {
+    const folder = folders[0]; // Assuming there's only one "Waweru Documents" folder
+    return folder.id;
+  } else {
+    throw new Error(`Folder named '${folderName}' not found in root.`);
   }
-});
+};
 
-// Start the Express server
+// Function to list folders inside the "Waweru Documents" folder
+const listSubFolders = async (folderId) => {
+  const res = await drive.files.list({
+    q: `mimeType='application/vnd.google-apps.folder' and '${folderId}' in parents`,
+    fields: "files(id, name)",
+  });
+
+  const subfolders = res.data.files;
+  if (subfolders.length) {
+    console.log(`Folders in 'Waweru Documents':`);
+    for (const folder of subfolders) {
+      console.log(`${folder.name} (${folder.id})`);
+      await listFilesInSubfolder(folder.id); // List files within the subfolder
+    }
+  } else {
+    console.log("No subfolders found.");
+  }
+};
+
+// Function to list files inside a specific subfolder
+const listFilesInSubfolder = async (folderId) => {
+  const res = await drive.files.list({
+    q: `'${folderId}' in parents`,
+    fields: "files(id, name )",
+  });
+
+  const files = res.data.files;
+  if (files.length) {
+    console.log(`Files in folder ID: ${folderId}`);
+    files.forEach((file) => {
+      console.log(`${file.name} (${file.id})`);
+    });
+  } else {
+    console.log(`No files found in folder ID: ${folderId}`);
+  }
+};
+
+// Call the function to list folders and files inside "Waweru Documents"
+const listFoldersAndFilesInWaweruDocuments = async () => {
+  try {
+    const folderId = await getFolderId("Waweru Documents");
+    await listSubFolders(folderId);
+  } catch (error) {
+    console.error(error.message);
+  }
+};
+
+// Define the PORT and start the Express server
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
+app.listen(PORT, async () => {
   console.log(`Server is running on port ${PORT}`);
+  await listFoldersAndFilesInWaweruDocuments();
 });
