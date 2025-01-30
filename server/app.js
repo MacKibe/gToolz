@@ -9,13 +9,14 @@ const app = express();
 // Enable CORS for all routes
 app.use(cors());
 
-// Your OAuth2 credentials
-const REFRESH_TOKEN =
-  "1//04w12tnQQThihCgYIARAAGAQSNwF-L9IrMPKlywztAWTmt5_KNeGcUac4txbUTt2usezqA1d553kOtbTpNJNKsh8CmjSoFm3g7t4";
-const CLIENT_ID =
-  "29587586519-r0pg7nbaeish65duob4d8dl0ngeetq7e.apps.googleusercontent.com";
-const CLIENT_SECRET = "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";
-const REDIRECT_URL = "https://developers.google.com/oauthplayground";
+// Load environment variables (if using dotenv)
+require("dotenv").config();
+
+// Your OAuth2 credentials (use environment variables)
+const REFRESH_TOKEN = process.env.REFRESH_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID;
+const CLIENT_SECRET = process.env.CLIENT_SECRET;
+const REDIRECT_URL = process.env.REDIRECT_URL;
 
 // Create an OAuth2 client using the credentials
 const oauthClient = new google.auth.OAuth2(
@@ -52,7 +53,7 @@ const getFolderId = async (folderName) => {
 const listFilesInFolder = async (folderId) => {
   const res = await drive.files.list({
     q: `'${folderId}' in parents`, // Fetch all files and subfolders
-    fields: "files(id, name, mimeType, permissions, webContentLink)",
+    fields: "files(id, name, mimeType, webContentLink)",
   });
 
   const files = res.data.files;
@@ -60,44 +61,48 @@ const listFilesInFolder = async (folderId) => {
   // Create an array to hold folder data
   const folderData = [];
 
-  // Recursively search for files in subfolders
+  // Process files and subfolders
   for (const file of files) {
-    if (file.mimeType === 'application/vnd.google-apps.folder') {
-      // Search for files in subfolder
+    if (file.mimeType === "application/vnd.google-apps.folder") {
+      // Recursively fetch files in subfolder
       const subfolderFiles = await listFilesInFolder(file.id);
       folderData.push({
         folderName: file.name,
         folderId: file.id,
-        files: subfolderFiles.map(f => f.files).flat(), // Flatten files in the subfolder
+        files: subfolderFiles,
       });
     } else {
-      // Add file directly to the folder data if there are no subfolders
-      folderData.push({ files: [file] }); // Add file as an object with files array
+      // Add file directly to the folder data
+      folderData.push({
+        fileName: file.name,
+        fileId: file.id,
+        fileUrl: file.webContentLink,
+      });
     }
   }
 
-  // Sort the folderData array by folder name numerically
+  // Sort folders by name (assuming folder names are numeric)
   folderData.sort((a, b) => parseInt(a.folderName) - parseInt(b.folderName));
 
   return folderData;
 };
 
-// Create an async function to handle the logic
-const main = async () => {
+// Define an API endpoint to fetch files
+app.get("/get-files", async (req, res) => {
   try {
     // Get the folder ID of "Waweru Documents"
     const folderId = await getFolderId("Waweru Documents");
-    console.log("1. Waweru's folder Id is:", folderId);
 
     // List files in the specified folder and its subfolders
     const files = await listFilesInFolder(folderId);
-    console.log("2. Files data:", JSON.stringify(files, null, 2));
+
+    // Send the response
+    res.status(200).json({ success: true, data: files });
   } catch (error) {
     console.error("Error:", error);
+    res.status(500).json({ success: false, message: error.message });
   }
-};
-// Call the main function
-main();
+});
 
 // Define the PORT and start the Express server
 const PORT = process.env.PORT || 3000;
