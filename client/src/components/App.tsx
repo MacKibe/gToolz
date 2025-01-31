@@ -1,9 +1,12 @@
 import React, { useEffect, useState } from "react";
 // import ImageBox from "./ImageBox";
 import Folder from "./Folder";
+import Nav from "./Nav";
+import ImageBox from "./ImageBox";
 
 const App = () => {
   const [folders, setFolders] = useState([]);
+  const [showImages, setShowImages] = useState(false)
 
   useEffect(() => {
     const fetchFiles = async () => {
@@ -22,13 +25,14 @@ const App = () => {
 
     fetchFiles();
   }, []);
+  const displayImages = () => {
 
+  }
   return (
-    <div>
-      <h1 className="underline">Files and Folders</h1>
+    <>
+      <Nav/>
       <Folder folders={folders}/>
-      {/* <ImageBox /> */}
-    </div>
+    </>
   );
 };
 
